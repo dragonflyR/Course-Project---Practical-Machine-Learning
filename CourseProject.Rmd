@@ -1,0 +1,121 @@
+---
+title: "Course Project - HAR"
+author: "Steve Chiu"
+date: "13 June 2016"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+#Executive Summary
+
+This proejct relates to the quantification of how well of a particular activity people do.  The goal is to use data from accelerometers on the belt, forearm, arm, and dumbell of 6 participants and then predict the manner in which they did the exercise, which is the "classe" variable in the training set.
+
+The 19622 obervations from the dataset was randomly divided into two portion, 3 quarters for the learning of the model (using Random Forest), and the remaining on for the probing of the model.
+
+Finally the model is used to make predication on 20 different test cases.
+
+#Background
+Human Activity Recognition - HAR - has emerged as a key research area in the last years and is gaining increasing attention by the pervasive computing research community. More information please refer to  <http://groupware.les.inf.puc-rio.br/har>.
+
+Using devices such as Jawbone Up, Nike FuelBand, and Fitbit it is now possible to collect a large amount of data about personal activity relatively inexpensively. These type of devices are part of the quantified self movement ??? a group of enthusiasts who take measurements about themselves regularly to improve their health, to find patterns in their behavior, or because they are tech geeks. One thing that people regularly do is quantify how much of a particular activity they do, but they rarely quantify how well they do it.
+
+In this project, the goal is to use data from accelerometers on the belt, forearm, arm, and dumbell of 6 participants. They were asked to perform barbell lifts correctly and incorrectly in 5 different ways.
+
+```{r library, echo=FALSE, message=FALSE}
+library(dplyr)
+library(caret)
+library(randomForest)
+```
+
+#Exploratory Analysis
+
+We shall first look into the data structure of the dataset, of which an extract is as per below:
+
+```{r}
+download.file("https://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv", "training.csv")
+download.file("https://d396qusza40orc.cloudfront.net/predmachlearn/pml-testing.csv", "testing.csv")
+training <- read.csv("training.csv", header = TRUE)
+testing <- read.csv("testing.csv", header = TRUE)
+head(training,3)
+str(training)[1:10]
+names(training)
+```
+
+In summary there are 160 variables, including the "classe" as the dependent variable.  Further investigations reveal that first 7 variables are not quantifiable and can be taken out.
+
+```{r}
+training1 <- training[,-(1:7)]
+```
+
+For the remaining variables, quite a number of them are factor variable.  A quick plot is made onto some of them to check their behavior.
+
+```{r}
+par(mfrow = c(3,3))
+for (i in c(5:10, 13, 16, 19)) plot(training1[,i])
+```
+
+As such we further clean up the data by removing all factor variables.  Also in order to make use of the Random Forrect, we remove variables with any NA data.
+
+```{r}
+na_sum <- lapply(1:152, function(x) sum(is.na(training1[,x])))
+training1 <- training1[,na_sum==0]
+is_factor <- lapply(1:ncol(training1), function(x) is.factor(training1[,x]))
+training1 <- training1[,is_factor==FALSE]
+```
+
+#Model Fitting
+
+We dissect the data into two portions.  Three quarters will be used for model learning and the remaining 1/4 are taken aside for "probing" of the model.
+
+We make use of Random Forest process, setting *ntree* to be 100.  The plot reveals that the error is quite stable well before 100 trees.
+
+```{r, echo=TRUE}
+set.seed(12345)
+inTrain <- createDataPartition(y=training$classe,p=0.75, list=FALSE)
+hartrain <- training1[inTrain,]
+harprobe <- training1[-inTrain,]
+
+modFit <- randomForest(y = training$classe[inTrain], x = hartrain,
+prox=TRUE, ntree=100)
+par(mfrow = c(1,1))
+plot(modFit)
+```
+
+We then apply the model to the set aside 1/4 data, following by checking with the *classe* data in the original dataset.
+
+```{r}
+pred <- predict(modFit, harprobe)
+sum(pred==training$classe[-inTrain])
+```
+
+The correctness is:
+
+```{r}
+sum(pred==training$classe[-inTrain]) / nrow(harprobe)
+```
+
+Error is incurred as we only use only 52 variables of the data set.  Including more variables would improve the accuracy, however, with the obtained result the upside would be limited.
+
+#Testing Result
+
+We next moved on to fit the model to predict the 20 test cases:
+
+```{r}
+testing1 <- testing[,-(1:7)]
+na_sum <- lapply(1:152, function(x) sum(is.na(testing1[,x])))
+testing1 <- testing1[,na_sum==0]
+is_factor <- lapply(1:ncol(testing1), function(x) is.factor(testing1[,x]))
+testing1 <- testing1[,is_factor==FALSE]
+testpred <- predict(modFit, testing1)
+testpred
+```
+
+#Conclusion
+
+This is a typical case that we can make apply tree prediction.  The *caret* package in *R* is a very effective tool to build the model.  The test results have been obtained accordingly.
+
+#Reference
+Ugulino, W.; Cardador, D.; Vega, K.; Velloso, E.; Milidiu, R.; Fuks, H. Wearable Computing: Accelerometers' Data Classification of Body Postures and Movements. Proceedings of 21st Brazilian Symposium on Artificial Intelligence. Advances in Artificial Intelligence - SBIA 2012. In: Lecture Notes in Computer Science. , pp. 52-61. Curitiba, PR: Springer Berlin / Heidelberg, 2012. ISBN 978-3-642-34458-9. DOI: 10.1007/978-3-642-34459-6_6
